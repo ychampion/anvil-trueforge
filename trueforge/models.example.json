@@ -1,0 +1,64 @@
+{
+  "_comment": "Example TrueForge model configuration for Anvil. setup.mjs builds exactly these provider manifests from environment variables (or $B/secrets/modal.env) and POSTs/PUTs them to /api/v1/settings/model-providers. Never commit real keys: replace the placeholders through the environment.",
+  "model_providers": [
+    {
+      "type": "custom",
+      "name": "modal",
+      "base_url": "https://<workspace>--anvil-vllm-serve.modal.run/v1",
+      "auth": { "api_key": "<MODAL_LLM_API_KEY>" },
+      "models": [
+        {
+          "name": "qwen3-coder-30b",
+          "model_id": "qwen3-coder-30b",
+          "properties": { "context_length": 65536, "max_output_tokens": 16384 }
+        }
+      ]
+    },
+    {
+      "type": "custom",
+      "name": "modal-fallback",
+      "base_url": "<FALLBACK_LLM_BASE_URL, defaults to the modal base_url>",
+      "auth": { "api_key": "<FALLBACK_LLM_API_KEY>" },
+      "models": [
+        {
+          "name": "qwen3-coder-30b",
+          "model_id": "<FALLBACK_LLM_MODEL, defaults to qwen3-coder-30b>",
+          "properties": { "context_length": 65536, "max_output_tokens": 16384 }
+        }
+      ]
+    },
+    {
+      "type": "custom",
+      "name": "broken",
+      "base_url": "http://127.0.0.1:9/v1",
+      "auth": { "api_key": "invalid" },
+      "models": [
+        {
+          "name": "qwen3-coder-30b",
+          "model_id": "qwen3-coder-30b",
+          "properties": { "context_length": 65536, "max_output_tokens": 16384 }
+        }
+      ]
+    }
+  ],
+  "agent_models": {
+    "anvil-coder": "modal/qwen3-coder-30b",
+    "anvil-coder-fallback": "modal-fallback/qwen3-coder-30b",
+    "anvil-inline": "modal/qwen3-coder-30b",
+    "anvil-inline-fallback": "modal-fallback/qwen3-coder-30b",
+    "anvil-inline-broken": "broken/qwen3-coder-30b"
+  },
+  "mcp_servers": [
+    {
+      "type": "remote",
+      "name": "anvil-editor",
+      "url": "http://127.0.0.1:7391/mcp",
+      "description": "Anvil VS Code editor tools (no auth, localhost only)"
+    }
+  ],
+  "server_env": {
+    "OUTBOUND_URL_ALLOWED_HOSTS": "[\"127.0.0.1\",\"localhost\"]",
+    "MODEL_HTTP_HEADERS_TIMEOUT_MS": "180000",
+    "MCP_REQUEST_TIMEOUT_MS": "600000"
+  }
+}

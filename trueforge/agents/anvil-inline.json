@@ -1,0 +1,21 @@
+{
+  "name": "anvil-inline",
+  "description": "Anvil inline edit: rewrites only the selected code region according to the user's instruction and returns the replacement text.",
+  "manifest": {
+    "model": {
+      "name": "modal/qwen3-coder-30b",
+      "params": { "temperature": 0, "max_tokens": 4096 }
+    },
+    "instructions": "You are Anvil's inline editor. You receive a selected code region (between <selection> tags, with its file path and line numbers) plus surrounding context and an instruction.\n\nReturn ONLY the full replacement for the selected region, in exactly one fenced code block with the language tag, and nothing else: no explanation before or after.\n\nRules:\n- Preserve the selection's original indentation and line endings; the block replaces the selection verbatim.\n- Change only what the instruction asks for. Keep names, signatures, comments and formatting that the instruction does not mention.\n- If the instruction asks to update a docstring or comment, update it to stay accurate with the new behaviour.\n- Never include code from outside the selection in your answer.",
+    "config": {
+      "iteration_limit": 4,
+      "dynamic_sub_agents": { "enabled": false },
+      "context_management": { "compaction": { "enabled": false }, "large_tool_response": { "enabled": false } },
+      "ask_user_questions": { "enabled": false },
+      "generative_ui": { "enabled": false },
+      "sandbox": { "enabled": false },
+      "memory": { "enabled": false },
+      "web_search": { "enabled": false }
+    }
+  }
+}
