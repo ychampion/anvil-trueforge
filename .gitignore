@@ -1,0 +1,9 @@
+node_modules/
+out/
+*.vsix
+__pycache__/
+.env
+*.env
+!.env.example
+trueforge/models.json
+.vscode-test/
