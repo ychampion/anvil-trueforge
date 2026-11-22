@@ -1,0 +1,9 @@
+src/**
+test/**
+node_modules/**
+out/**/*.map
+tsconfig.json
+esbuild.mjs
+bun.lock
+*.vsix
+.vscode-test/**

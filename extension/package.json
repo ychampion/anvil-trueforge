@@ -1,0 +1,204 @@
+{
+  "name": "anvil",
+  "displayName": "Anvil",
+  "description": "A coding agent for VS Code whose agent loop runs on TrueForge.",
+  "version": "0.1.0",
+  "publisher": "anvil",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Programming Languages"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "anvil",
+          "title": "Anvil",
+          "icon": "media/anvil.svg"
+        }
+      ]
+    },
+    "views": {
+      "anvil": [
+        {
+          "type": "webview",
+          "id": "anvil.panel",
+          "name": "Agent"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "anvil.inlineEdit",
+        "title": "Anvil: Inline Edit"
+      },
+      {
+        "command": "anvil.openPanel",
+        "title": "Anvil: Open Agent Panel"
+      },
+      {
+        "command": "anvil.cancel",
+        "title": "Anvil: Cancel"
+      },
+      {
+        "command": "anvil.undoLast",
+        "title": "Anvil: Undo Last Applied Change"
+      },
+      {
+        "command": "anvil.undoRun",
+        "title": "Anvil: Undo Whole Run"
+      },
+      {
+        "command": "anvil.selectModel",
+        "title": "Anvil: Select Model"
+      },
+      {
+        "command": "anvil.openSession",
+        "title": "Anvil: Open Session in TrueForge"
+      },
+      {
+        "command": "anvil.review.acceptHunk",
+        "title": "Anvil: Accept Hunk"
+      },
+      {
+        "command": "anvil.review.rejectHunk",
+        "title": "Anvil: Reject Hunk"
+      },
+      {
+        "command": "anvil.review.acceptAll",
+        "title": "Anvil: Accept All Hunks"
+      },
+      {
+        "command": "anvil.review.rejectAll",
+        "title": "Anvil: Reject All Hunks"
+      },
+      {
+        "command": "anvil.review.apply",
+        "title": "Anvil: Apply Accepted Hunks"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "anvil.inlineEdit",
+        "key": "ctrl+alt+e",
+        "mac": "cmd+alt+e",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "anvil.cancel",
+        "key": "escape",
+        "when": "anvil.busy"
+      }
+    ],
+    "configuration": {
+      "title": "Anvil",
+      "properties": {
+        "anvil.trueforgeUrl": {
+          "type": "string",
+          "default": "http://localhost:8790",
+          "description": "TrueForge server base URL."
+        },
+        "anvil.trueforgeUiUrl": {
+          "type": "string",
+          "default": "",
+          "description": "TrueForge web UI base URL (for 'Open in TrueForge'). Empty = same as anvil.trueforgeUrl."
+        },
+        "anvil.agent": {
+          "type": "string",
+          "default": "anvil-coder",
+          "description": "TrueForge agent used by the agent panel."
+        },
+        "anvil.inlineAgent": {
+          "type": "string",
+          "default": "anvil-inline",
+          "description": "TrueForge agent used for inline edits."
+        },
+        "anvil.models": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Ordered TrueForge model FQNs: primary first, then fallbacks. Empty = the agent's own model only."
+        },
+        "anvil.retry": {
+          "type": "object",
+          "default": {
+            "attempts": 2,
+            "backoffMs": 800,
+            "factor": 2
+          },
+          "description": "Retries per model before falling back to the next model."
+        },
+        "anvil.contextBudgetTokens": {
+          "type": "number",
+          "default": 6000,
+          "description": "Token budget for the automatic context pack in agent mode."
+        },
+        "anvil.mcpPort": {
+          "type": "number",
+          "default": 7391,
+          "description": "Port for Anvil's local MCP server (editor tools)."
+        },
+        "anvil.autoApproveCommands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "^(python -m )?pytest\\b",
+            "^flask( |$)",
+            "^python -c ",
+            "^git (status|diff)"
+          ],
+          "description": "Regexes; run_command calls matching one are approved automatically."
+        },
+        "anvil.agentChain": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Ordered saved TrueForge agents for the panel (primary, then fallbacks). Overrides anvil.models when set."
+        },
+        "anvil.inlineAgentChain": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Ordered saved TrueForge agents for inline edit (e.g. [\"anvil-inline-broken\",\"anvil-inline\"]). Overrides anvil.models when set."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test:smoke": "node test/runSmoke.js",
+    "package": "node esbuild.mjs && bunx @vscode/vsce package --no-dependencies --allow-missing-repository --skip-license -o anvil.vsix"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "@truefoundry/trueforge-sdk": "^0.185.0",
+    "diff": "^5.2.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/diff": "^5.2.1",
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/test-electron": "^2.4.1",
+    "esbuild": "^0.23.0",
+    "typescript": "^5.5.4"
+  }
+}

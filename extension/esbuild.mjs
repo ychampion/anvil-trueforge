@@ -1,0 +1,20 @@
+import * as esbuild from 'esbuild';
+
+const watch = process.argv.includes('--watch');
+const opts = {
+  entryPoints: ['src/extension.ts'],
+  bundle: true,
+  outfile: 'out/extension.js',
+  platform: 'node',
+  format: 'cjs',
+  target: 'node18',
+  external: ['vscode'],
+  sourcemap: true,
+  logLevel: 'info',
+};
+if (watch) {
+  const ctx = await esbuild.context(opts);
+  await ctx.watch();
+} else {
+  await esbuild.build(opts);
+}
