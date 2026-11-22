@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Anvil — TrueForge Forge-a-thon write-up</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  @page { size: A4; margin: 14mm 15mm 14mm 15mm; }
+  :root { --ink:#16181d; --muted:#5b616e; --rule:#e3e5ea; --fill:#f4f5f7; --accent:#2f5bd3; }
+  html { background:#fff; }
+  body { font-family:"Instrument Sans", system-ui, sans-serif; color:var(--ink); font-size:9.6pt; line-height:1.42; margin:0; }
+  h1 { font-size:17pt; font-weight:600; margin:0 0 2pt; letter-spacing:-0.01em; }
+  .sub { color:var(--muted); margin:0 0 8pt; }
+  h2 { font-size:11pt; font-weight:600; margin:9pt 0 3pt; padding-top:5pt; border-top:1px solid var(--rule); }
+  h2 .n { color:var(--accent); margin-right:4pt; }
+  p { margin:0 0 4pt; }
+  ul { margin:0 0 4pt; padding-left:13pt; } li { margin:0 0 1.5pt; }
+  code, .mono { font-family:"JetBrains Mono", ui-monospace, monospace; font-size:8.4pt; background:var(--fill); padding:0 2pt; border-radius:2px; }
+  table { border-collapse:collapse; width:100%; margin:3pt 0 5pt; font-size:8.8pt; }
+  th, td { text-align:left; vertical-align:top; padding:2.5pt 5pt; border-bottom:1px solid var(--rule); }
+  th { font-weight:600; background:var(--fill); }
+  .flow { background:var(--fill); padding:5pt 7pt; border-radius:3px; font-family:"JetBrains Mono", monospace; font-size:8pt; white-space:pre; line-height:1.35; margin:3pt 0 5pt; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:10pt; }
+  .todo { background:#fff3c4; }
+</style>
+</head>
+<body>
+
+<h1>Anvil — an editor-native coding agent on TrueForge</h1>
+<p class="sub">TrueFoundry Forge-a-thon, Techfest 2026-27 · Round 1 · Repo: <span class="mono todo">github.com/ychampion/anvil-trueforge</span> · Video: <span class="mono todo">VIDEO_URL</span></p>
+
+<h2><span class="n">1</span>Team</h2>
+<p>Solo entry. <span class="todo">Team name: TEAM_NAME · Team ID: TEAM_ID</span> · Member: <span class="todo">MEMBER_NAME</span> (<span class="todo">COLLEGE_OR_EMPLOYER</span>), GitHub <span class="mono">@ychampion</span>.</p>
+
+<h2><span class="n">2</span>Starting point</h2>
+<p><b>From scratch.</b> No upstream editor project was forked, so there is no fork commit to declare and no inherited agent loop to replace. Third-party code is limited to ordinary dependencies (the TrueForge SDK, the MCP TypeScript SDK, <span class="mono">jsdiff</span>, <span class="mono">zod</span>, esbuild), credited in the README. We chose this because the editor surface we needed is small: VS Code's built-in diff editor, CodeLens and webview cover the UI, so the time went into context selection and edit safety.</p>
+
+<h2><span class="n">3</span>Architecture on TrueForge</h2>
+<div class="flow">VS Code extension (Anvil)                       TrueForge 0.185.1, local mode (127.0.0.1:8790, SQLite)
+ ├ Agent panel / inline edit ── SDK: sessions.create, createTurnStream ──▶ agent loop: anvil-coder | anvil-inline
+ │   ◀── SSE turn events: model.message.delta, tool.approval_required, thread.created, turn.done ──┤
+ │   ── user.tool_approval (allow / deny + reason) via subscribeToTurn + createTurnEvents ───────▶ │
+ ├ MCP server "anvil-editor" (streamable HTTP, 127.0.0.1:7391/mcp) ◀── MCP tool calls ───────────┘
+ │   retrieve_context · search · read_file · list_files · find_symbol · find_references
+ │   edit_file* · create_file* · run_command*            (* gated by require_approval_for_tools)
+ └ Review engine: per-hunk accept/reject, apply via WorkspaceEdit, checkpoints, undo   ── model: custom provider → vLLM on Modal</div>
+<ul>
+  <li><b>The extension is only a client.</b> It never calls a model. Every turn is a TrueForge session/turn; the model is a TrueForge <span class="mono">custom</span> provider. The agent definitions are in <span class="mono">trueforge/agents/*.json</span> and are registered by <span class="mono">trueforge/setup.mjs</span> through TrueForge's settings API.</li>
+  <li><b>Editor capabilities are MCP tools, so the agent decides what to read and change.</b> The extension hosts the MCP server in-process, so reads see unsaved buffers, and writes go through the editor rather than straight to disk.</li>
+  <li><b>TrueForge tool approval drives the diff review.</b> <span class="mono">edit_file</span>/<span class="mono">create_file</span>/<span class="mono">run_command</span> are listed in <span class="mono">require_approval_for_tools</span>, so the turn pauses on <span class="mono">tool.approval_required</span>. Anvil reads the call's arguments from the event index, renders the proposed change hunk by hunk, and records the user's per-hunk decision keyed by (path, sha256 of the proposal). It then answers allow (≥1 hunk kept) or deny ("user rejected all hunks"). When TrueForge runs the tool, the MCP handler applies only the accepted hunks, and its result tells the model exactly what landed. An <span class="mono">edit_file</span> whose <span class="mono">old_string</span> isn't found exactly once is auto-denied with the reason, so the agent can't "confidently edit a symbol that does not exist".</li>
+  <li><b>Harness features used.</b> <i>Deferred tool loading</i>: only <span class="mono">retrieve_context, search, read_file, edit_file</span> are preloaded, and the rest are discovered on demand. <i>Subagents</i>: broad exploration is delegated to a subagent that returns only paths and reasons, which keeps the main context clean. <i>Compaction</i>: an explicit input-token trigger (<span class="todo">40k</span>) sized to the model's context. <span class="todo">Which of these shows in the Task B session: CONFIRM.</span></li>
+</ul>
+
+<h2><span class="n">4</span>How context is selected</h2>
+<p>Flask 3.1.3 is about 17.9k lines, far more than fits in a prompt. So Anvil never concatenates whole files: it hands the model a <b>budgeted, ranked, explained pack</b>, and lets the agent pull more through tools.</p>
+<ul>
+  <li><b>Structural index (0.2–0.3 s).</b> Python is chunked by <span class="mono">def</span>/<span class="mono">class</span> (indentation-aware, decorators and docstrings kept, methods of big classes split out), rst/md by section, everything else in 60-line windows. A symbol table and a Python import graph are built alongside. On Flask that is 226 files, 1,493 chunks and 947 symbols.</li>
+  <li><b>Pinned first.</b> The editor selection (expanded to its enclosing function) and explicit <span class="mono">@file</span> / <span class="mono">@symbol</span> mentions, which autocomplete in the panel, always enter the pack first.</li>
+  <li><b>Lexical retrieval.</b> BM25 over chunks with code-aware tokens: snake/camel splitting, whole identifiers kept, light stemming, and low-weight code synonyms (cli→click/command, print→echo). It adds boosts for path and symbol-name hits, plus a "wiring" boost for a chunk that references several top hits. This is how it finds <span class="mono">FlaskGroup.__init__</span>, where the built-in commands are registered. Docs and tests are down-weighted at this stage…</li>
+  <li><b>…then added back structurally.</b> Around the best source file it adds the test sibling, the docs page (by filename, module or symbol mentions, or env vars like <span class="mono">FLASK_DEBUG</span>), callers of the selected symbol and import neighbours. Each comes with its own reason.</li>
+  <li><b>Budget.</b> Tokens are estimated as ⌈chars/4⌉ of the rendered snippet. Packing is greedy in priority order, with a cap per item (a hit ≤ ~25 % of the budget, a test sibling ≤ 18 %, docs ≤ 15 %). A chunk that doesn't fit degrades to an <i>outline</i> (signature, first docstring line, "read_file Lx–Ly for the body") before it is dropped. Every drop is recorded with its reason ("over budget: 559 tok (96 left)", "score below cutoff"). Budgets: agent pre-turn pack 6,000 tok, the <span class="mono">retrieve_context</span> tool 4,000 by default, inline edit 2,000.</li>
+  <li><b>Visible "why".</b> The panel's <i>Context chosen</i> card lists each file, its line range, tokens used against the budget, the reason (what it defines, BM25 score and matching terms, sibling type) and what was left out. The agent's instructions require it to state which files it chose and why before editing, and <span class="mono">retrieve_context</span>, <span class="mono">search</span> and <span class="mono">find_symbol</span> let it widen the search itself.</li>
+  <li><b>Measured on the fixed tasks.</b> Task B with no files named: <span class="mono">cli.py</span> (FlaskGroup wiring, <span class="mono">run_command</span>), <span class="mono">tests/test_cli.py</span> and <span class="mono">docs/cli.rst</span>, at 5,968 / 6,000 tokens, in 54 ms. Task A: <span class="mono">get_debug_flag</span>, its test in <span class="mono">test_helpers.py</span>, <span class="mono">docs/config.rst</span> and its callers, in 18 ms.</li>
+</ul>
+
+<h2><span class="n">5</span>Model setup</h2>
+<table>
+<tr><th>Role</th><th>Model</th><th>Where it ran</th><th>Approx. cost</th></tr>
+<tr><td>Primary (all tasks)</td><td class="todo">Qwen3-Coder-30B-A3B-Instruct (FP8), via vLLM, OpenAI-compatible</td><td>Modal, 1× H100, TrueForge provider <span class="mono">modal</span></td><td class="todo">~$4/h warm; ~$N total for development + recording</td></tr>
+<tr><td>Task C "primary"</td><td>deliberately broken endpoint <span class="mono">http://127.0.0.1:9/v1</span>, key <span class="mono">invalid</span></td><td>TrueForge provider <span class="mono">broken</span></td><td>$0</td></tr>
+</table>
+<p>Switching models: <span class="mono">Anvil: Select Model</span> reorders <span class="mono">anvil.models</span>, an ordered primary-then-fallback list of TrueForge model names. Any provider TrueForge supports works, because Anvil only ever names a model. To add one, run <span class="mono">trueforge/setup.mjs</span> with <span class="mono">models.example.json</span>, or use TrueForge's Settings → Models.</p>
+
+<h2><span class="n">6</span>Scorecard</h2>
+<table class="todo">
+<tr><th>Criterion</th><th>Video</th><th>Claim</th></tr>
+<tr><td>A1 Inline edit</td><td>0:00</td><td>Ctrl+Alt+E, instruction, tokens stream, diff in editor with per-hunk Accept/Reject CodeLens</td></tr>
+<tr><td>A2 Agent mode</td><td>0:00</td><td>One request, no files named; agent finds and edits cli.py, test_cli.py, cli.rst</td></tr>
+<tr><td>A3 Streaming &amp; cancel</td><td>0:00</td><td>Tokens stream; Esc cancels instantly; run checkpoint restores files</td></tr>
+<tr><td>B1 Context assembly</td><td>0:00</td><td>"Context chosen" card: files, line ranges, reasons, tokens used/budget, excluded</td></tr>
+<tr><td>B2 Diff safety</td><td>0:00</td><td>Per-hunk review; nothing written before approval; Undo restores, git status clean</td></tr>
+<tr><td>B3 Resilience</td><td>0:00</td><td>Broken endpoint: retry with backoff, then automatic fallback; git status clean</td></tr>
+<tr><td>B4 TrueForge depth</td><td>0:00</td><td>MCP tools + approval-driven review; deferred tools / subagent visible in session</td></tr>
+<tr><td>C1/C2</td><td>—</td><td>A, B, C in order, each verified on screen; this document</td></tr>
+</table>
+
+<h2><span class="n">7</span>Tools used</h2>
+<p class="todo">TrueForge 0.185.1 + SDK 0.185.0, VS Code 1.106, TypeScript, esbuild, bun, MCP TypeScript SDK, jsdiff, vLLM on Modal, ripgrep. AI coding assistant: Claude Code (Claude Opus 5.5) wrote most of the code from our design, and we reviewed and tested it.</p>
+
+<h2><span class="n">8</span>Known limitations and another month</h2>
+<ul class="todo">
+  <li>Retrieval is lexical (BM25 + structure). Next: a local embedding index and LSP-backed symbol graphs (references, call hierarchy) instead of regex parsing, which is Python-centric today.</li>
+  <li>Fallback lives in the client, because TrueForge has no per-turn model routing yet; it would be a natural harness PR.</li>
+  <li>Edits are applied as they're approved so the agent can run tests. Cancel restores the run checkpoint, but a crash of VS Code mid-run relies on git to recover.</li>
+</ul>
+
+</body>
+</html>
