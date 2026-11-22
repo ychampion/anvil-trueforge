@@ -46,6 +46,10 @@ writeup/            the 1–3 page write-up
 Prerequisites: Node ≥ 22.14, [bun](https://bun.sh), VS Code ≥ 1.90, ripgrep (`rg`) on your PATH, and Python 3.10+
 for the Flask tasks.
 
+```bash
+git clone https://github.com/ychampion/anvil-trueforge && cd anvil-trueforge
+```
+
 ### 1. Start TrueForge in local mode
 
 ```bash
